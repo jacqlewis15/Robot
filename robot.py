@@ -47,13 +47,13 @@ def init(data):
 	data.limits = (220,160,45)
 
 	# pump parameters, subject to change
-	data.flowRate = [.5]*4
+	data.flowRate = [.5]*4 
 	data.mils = 1
 	data.sigfig = 2
 	data.fillNum = [0]*4
 
 	# initialization of Raspberry Pi pins
-	data.pumpPins = [(4,17,27),(22,5,6),(13,19,26),(23,24,25)]
+	data.pumpPins = [(3,4,2,17),(15,18,14,23),(16,20,12,21),(13,19,6,26)]
 	GPIO.setmode(GPIO.BCM)
 	data.off = False
 	data.on = True  
@@ -138,7 +138,7 @@ def move(data,coords):
 		data.current = coords
 		start = time.time()
 		while(not query(data)):
-			if time.time()-start > 100: 
+			if time.time()-start > 20: # 100 works
 				query(data,True)
 				break
 			continue
@@ -162,17 +162,63 @@ def pump(data,idx):
 	if tim == 0: return
 	print("meow")
 
-	# turns pumps on and off as necessary
-	GPIO.output(data.pumpPins[idx][1], data.off)
-	GPIO.output(data.pumpPins[idx][2], data.on)
-	p = GPIO.PWM(data.pumpPins[idx][0], 60)
 	start = time.time()
-	p.start(40)
-	while((time.time() - start) < tim): continue
-	p.stop()
-
-	GPIO.output(data.pumpPins[idx][0], data.off)
-	GPIO.output(data.pumpPins[idx][2], data.off)
+	# turns pumps on and off as necessary
+	i = 0
+	while((time.time() - start) < tim): 
+		if i==0:
+			GPIO.output(data.pumpPins[idx][0],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
+			time.sleep(0.005)
+		elif i==1:
+			GPIO.output(data.pumpPins[idx][0],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][1],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
+			time.sleep(0.005)
+		elif i==2:  
+			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][1],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
+			time.sleep(0.005)
+		elif i==3:    
+			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][1],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][2],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
+			time.sleep(0.005)
+		elif i==4:  
+			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][2],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
+			time.sleep(0.005)
+		elif i==5:
+			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][2],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][3],GPIO.HIGH)
+			time.sleep(0.005)
+		elif i==6:    
+			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][3],GPIO.HIGH)
+			time.sleep(0.005)
+		elif i==7:    
+			GPIO.output(data.pumpPins[idx][0],GPIO.HIGH)
+			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
+			GPIO.output(data.pumpPins[idx][3],GPIO.HIGH)
+			time.sleep(0.005)
+		if i==7:
+			i=0
+			continue
+		i=i+1
+	
 
 # This function checks if the cnc machine has finished its task.
 def query(data,debug=False):
@@ -214,7 +260,9 @@ def dispense(data):
 		motor.join()
 	for (idx,motor) in p:
 		data.fillNum[idx] += 1
-	# moves robot up
+	# moves robot up (try to shake off drips?)
+	move(data,(data.current[0],data.current[1],10))
+	move(data,(data.current[0],data.current[1],15))
 	move(data,(data.current[0],data.current[1],20))
 	
 # This function moves the robot across a row and dispenses chemicals as needed.
@@ -510,6 +558,7 @@ def keyPressed(event, data):
 		data.s.write("\r\n\r\n")
 		time.sleep(2)   # Wait for grbl to initialize 
 		data.s.flushInput()  # Flush startup text in serial input
+		move(data,(data.current[0],data.current[1],20))
 		move(data,(0,0,0))
 		data.s.close()
 
