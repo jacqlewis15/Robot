@@ -7,13 +7,18 @@
 # robotic fill system, utilizing a CNC machine and pumps controlled by the
 # raspberry pi.
 
-
 from Tkinter import *
 import string
 import serial
 import time
 import RPi.GPIO as GPIO
+import subprocess
 from multiprocessing import Process
+from hx711 import HX711
+
+def readFile(path):
+    with open(path, "rt") as f:
+        return f.read()
 
 ####################################
 # User Interface
@@ -26,13 +31,13 @@ def init(data):
 	data.pumpheight = 600
 
 	# for testing purposes, to save time
-	data.pump[0] = "5"
-	data.pump[1][0] = "0"
-	data.pump[1][3] = "2.5"
 	data.pump[2] = "solvent"
-	data.pump[4] = "4"
-	data.pump[5][0] = "2"
-	data.pump[5][1] = "1"
+	#data.pump[1][0] = "0"
+	#data.pump[1][3] = "2.5"
+	#data.pump[2] = "solvent"
+	#data.pump[4] = "4"
+	#data.pump[5][0] = "2"
+	#data.pump[5][1] = "1"
 
 	# editing parameters
 	data.edit = [False,[False]*4,False,[False]*4,False,[False]*4,False,[False]*4]
@@ -40,15 +45,18 @@ def init(data):
 	data.editing = False
 	data.time = 0
 	data.error = ""
+	data.reading = 0
+	data.filling = False
 
 	# cnc machine parameters
 	data.initial = (0,0,0)
 	data.current = (0,0,0)
 	data.limits = (220,160,45)
+	data.corner = (67,56) # depends on setup of tray
 
 	# pump parameters, subject to change
-	data.flowRate = [.5]*4 
-	data.mils = 1
+	data.density = [1]*4 
+	data.mils = .6
 	data.sigfig = 2
 	data.fillNum = [0]*4
 
@@ -68,6 +76,15 @@ def init(data):
 		for i in range(8):
 			pumpArray.append([0]*12)
 		data.amt.append(pumpArray)
+
+def readScale(data):
+	working = False
+	while(not working):
+		try:
+			val = float(readFile("values.txt"))
+			working = True
+			return val
+		except: working = False
 
 # This function determines if a point is within certain bounds.
 def within(x,y,corners):
@@ -154,71 +171,72 @@ def pump(data,idx):
 	col = data.fillNum[idx] % 12
 	if row % 2 == 1: col = 11 - col
 
+	# determine mass of chemical to add
 	amt = data.amt[idx][row][col]
-	tim = round(amt/data.flowRate[idx],data.sigfig)
-	
-	# debugging print statements that may actually be necessary
-	print(tim)
-	if tim == 0: return
-	print("meow")
+	mass = round(amt/data.density[idx],data.sigfig)
+	initMass = readScale(data)
+	wait = .004
+	halfDrop = 0.02
 
-	start = time.time()
 	# turns pumps on and off as necessary
 	i = 0
-	while((time.time() - start) < tim): 
+	while((readScale(data) - initMass) < mass - halfDrop): 
+                #print(mass)
+                #print(readScale(data))
+                if ((readScale(data) - initMass) > (mass - 0.20)): wait = 0.075
 		if i==0:
 			GPIO.output(data.pumpPins[idx][0],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==1:
 			GPIO.output(data.pumpPins[idx][0],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][1],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==2:  
 			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][1],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==3:    
 			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][1],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][2],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==4:  
 			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][2],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][3],GPIO.LOW)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==5:
 			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][2],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][3],GPIO.HIGH)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==6:    
 			GPIO.output(data.pumpPins[idx][0],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][3],GPIO.HIGH)
-			time.sleep(0.005)
+			time.sleep(wait)
 		elif i==7:    
 			GPIO.output(data.pumpPins[idx][0],GPIO.HIGH)
 			GPIO.output(data.pumpPins[idx][1],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][2],GPIO.LOW)
 			GPIO.output(data.pumpPins[idx][3],GPIO.HIGH)
-			time.sleep(0.005)
+			time.sleep(wait)
 		if i==7:
 			i=0
 			continue
 		i=i+1
-	
+        print("Net =", readScale(data) - initMass)
 
 # This function checks if the cnc machine has finished its task.
 def query(data,debug=False):
@@ -233,6 +251,12 @@ def query(data,debug=False):
 	data.s.readline()
 	return done
 
+# checks if the pump can dispense
+def canPump(data,idx):
+	corner = data.corner[0]
+	startPoint = [corner, corner + 9, corner + 18, corner + 27]
+	return (startPoint[idx] <= data.current[0] <= (startPoint[idx] + 99))
+
 # This function operates all eligible pumps and moves to the pumping
 # height, at the set location.
 def dispense(data):
@@ -240,26 +264,23 @@ def dispense(data):
 	move(data,(data.current[0],data.current[1],5))
 	p = []
 	# checks which pumps can be operated at their given positions
-	if 62 <= data.current[0] <= 161: 
+	if canPump(data,0): 
 		print("Pump1")
-		p.append((0,Process(target=pump,args=(data,0))))
-	if 71 <= data.current[0] <= 170: 
-		print("Pump2")
-		p.append((1,Process(target=pump,args=(data,1))))
-	if 80 <= data.current[0] <= 179: 
-		print("Pump3")
-		p.append((2,Process(target=pump,args=(data,2))))
-	if 89 <= data.current[0] <= 188: 
-		print("Pump4")
-		p.append((3,Process(target=pump,args=(data,3))))
+		pump(data,0)
+		data.fillNum[0] += 1
+	#if canPump(data,1): 
+	#	print("Pump2")
+	#	pump(data,1)
+	#	data.fillNum[1] += 1
+	#if canPump(data,2): 
+	#	print("Pump3")
+	#	pump(data,2)
+	#	data.fillNum[2] += 1
+	#if canPump(data,3): 
+	#	print("Pump4")
+	#	pump(data,3)
+	#	data.fillNum[3] += 1
 	data.s.flushInput()
-	# runs pumps in parallel
-	for (idx,motor) in p:
-		motor.start()
-	for (idx,motor) in p:
-		motor.join()
-	for (idx,motor) in p:
-		data.fillNum[idx] += 1
 	# moves robot up (try to shake off drips?)
 	move(data,(data.current[0],data.current[1],10))
 	move(data,(data.current[0],data.current[1],15))
@@ -279,14 +300,14 @@ def across(data,num,dirn):
 # well according to specs.
 def path(data,mode,num):
 	if mode == "hor":
-		startx,starty = (62,33)
+		startx,starty = data.corner
 	# go to start
-	move(data,(0,0,20))            ############## might need to run pump til liquid is ready to dispense
+	move(data,(0,0,20))            
 	move(data,(startx,starty,20))
 	# fill rows
-	for i in range(4//num): 
-		across(data,num,1)
-		across(data,num,-1) 
+	# for i in range(4//num): 
+        across(data,num,1)
+		# across(data,num,-1) 
 
 # This function determines how the concentration is being defined for this run.
 def getBuildType(lst):
@@ -680,14 +701,3 @@ def run(width=300, height=300):
 # runs the program
 run(800, 750)
 
-# # startup for headless pi
-# class Struct(object): pass
-# data = Struct()
-# data.width = 800
-# data.height = 750
-# data.timerDelay = 100 # milliseconds
-
-# init(data)
-
-# fill(data)
-# print("complete")
